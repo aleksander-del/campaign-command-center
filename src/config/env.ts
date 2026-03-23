@@ -10,8 +10,7 @@ const envSchema = z.object({
   AIMFOX_API_KEY: z.string().optional(),
   INSTANTLY_API_KEY: z.string(),
   SLACK_WEBHOOK_URL: z.string().optional(),
-  GOOGLE_SHEETS_ID: z.string().optional(),
-  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  MAKE_WEBHOOK_URL: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

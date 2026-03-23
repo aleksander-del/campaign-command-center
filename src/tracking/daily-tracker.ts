@@ -15,8 +15,9 @@ export async function runDailyTracking(): Promise<void> {
     company: string;
     audience: string;
     instantly_campaign_id: string;
+    lead_count: number;
   }>(
-    "SELECT id, company, audience, instantly_campaign_id FROM campaigns WHERE status = 'active' AND instantly_campaign_id IS NOT NULL"
+    "SELECT id, company, audience, instantly_campaign_id, lead_count FROM campaigns WHERE status = 'active' AND instantly_campaign_id IS NOT NULL"
   );
 
   if (campaigns.length === 0) {
@@ -61,12 +62,12 @@ export async function runDailyTracking(): Promise<void> {
         [campaign.id, metrics.sent, metrics.opened, metrics.replied, metrics.bounced, metrics.positive_replies, metrics.meetings_booked, JSON.stringify(diagnostics)]
       );
 
-      // 5. Log to Google Sheets
-      await appendDailyMetrics(`${campaign.company} — ${campaign.audience}`, {
+      // 5. Log to Make.com webhook
+      await appendDailyMetrics(campaign.id, `${campaign.company} — ${campaign.audience}`, {
         ...metrics,
         grade: diagnostics.grade,
         decision: diagnostics.decision,
-      });
+      }, campaign.lead_count || 0);
 
       slackData.push({
         name: `${campaign.company} — ${campaign.audience}`,

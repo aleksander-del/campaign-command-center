@@ -1,20 +1,6 @@
-import { google } from 'googleapis';
 import { logger } from '../logger';
 
-async function getSheetsClient() {
-  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!json) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON not set');
-
-  const credentials = JSON.parse(json);
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-
-  return google.sheets({ version: 'v4', auth });
-}
-
-export async function appendDailyMetrics(campaignName: string, metrics: {
+export async function appendDailyMetrics(campaignId: string, campaignName: string, metrics: {
   sent: number;
   opened: number;
   replied: number;
@@ -23,42 +9,40 @@ export async function appendDailyMetrics(campaignName: string, metrics: {
   meetings_booked: number;
   grade: string;
   decision: string;
-}): Promise<void> {
-  const sheetId = process.env.GOOGLE_SHEETS_ID;
-  if (!sheetId) {
-    logger.warn('GOOGLE_SHEETS_ID not configured, skipping sheet logging');
+}, leadCount: number): Promise<void> {
+  const webhookUrl = process.env.MAKE_WEBHOOK_URL;
+  if (!webhookUrl) {
+    logger.warn('MAKE_WEBHOOK_URL not configured, skipping Make.com logging');
     return;
   }
 
+  const openRate = metrics.sent > 0 ? ((metrics.opened / metrics.sent) * 100).toFixed(1) : '0';
+  const positiveReplyRate = metrics.sent > 0 ? ((metrics.positive_replies / metrics.sent) * 100).toFixed(1) : '0';
+
+  const payload = {
+    campaign_id: campaignId,
+    campaign_name: campaignName,
+    new_leads: leadCount,
+    replies: metrics.replied,
+    completed_count: metrics.sent,
+    bounces: metrics.bounced,
+    leads_count: leadCount,
+    emails_sent: metrics.sent,
+    opens: metrics.opened,
+    positive_replies: metrics.positive_replies,
+    calls_booked: metrics.meetings_booked,
+    open_rate: `${openRate}%`,
+    positive_reply_rate: `${positiveReplyRate}%`,
+  };
+
   try {
-    const sheets = await getSheetsClient();
-    const date = new Date().toISOString().split('T')[0];
-    const replyRate = metrics.sent > 0 ? ((metrics.replied / metrics.sent) * 100).toFixed(1) : '0';
-    const openRate = metrics.sent > 0 ? ((metrics.opened / metrics.sent) * 100).toFixed(1) : '0';
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: sheetId,
-      range: 'Daily Metrics!A:K',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[
-          date,
-          campaignName,
-          metrics.sent,
-          metrics.opened,
-          `${openRate}%`,
-          metrics.replied,
-          `${replyRate}%`,
-          metrics.positive_replies,
-          metrics.bounced,
-          metrics.meetings_booked,
-          `${metrics.grade} (${metrics.decision})`,
-        ]],
-      },
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-
-    logger.info(`Logged metrics to Google Sheet for ${campaignName}`);
+    logger.info(`Logged metrics to Make.com for ${campaignName}`);
   } catch (err) {
-    logger.error('Google Sheets logging failed', { error: err });
+    logger.error('Make.com webhook failed', { error: err });
   }
 }
