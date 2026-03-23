@@ -19,6 +19,13 @@ export interface LeadQuery {
   location?: string;
   industry?: string;
   limit?: number;
+  icp_config?: {
+    industries?: string[];
+    locations?: string[];
+    target_titles?: string[];
+    company_size?: string;
+    [key: string]: any;
+  };
 }
 
 export interface LeadSource {

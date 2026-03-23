@@ -37,6 +37,7 @@ export async function runPipeline(campaignId: string): Promise<void> {
   const leadQuery: LeadQuery = {
     company: campaign.company,
     audience: campaign.audience,
+    icp_config: campaign.icp_config,
     limit: 50,
   };
 

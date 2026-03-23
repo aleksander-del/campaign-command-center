@@ -4,8 +4,9 @@ import { logger } from '../logger';
 // Company size mapping for A-leads API
 // 1: 1-10, 2: 11-20, 3: 21-50, 4: 51-100, 5: 101-200,
 // 6: 201-500, 7: 501-1000, 8: 1001-5000, 9: 5001-10000, 10: 10001+
-function parseCompanySizes(audience: string): number[] {
-  const lower = audience.toLowerCase();
+function parseCompanySizes(text: string): number[] {
+  const lower = text.toLowerCase();
+  if (lower.includes('50-1000') || lower.includes('50–1,000') || lower.includes('50–1000')) return [4, 5, 6, 7];
   if (lower.includes('1-10') || lower.includes('startup')) return [1];
   if (lower.includes('5-50') || lower.includes('small')) return [1, 2, 3];
   if (lower.includes('10-50')) return [2, 3];
@@ -13,33 +14,7 @@ function parseCompanySizes(audience: string): number[] {
   if (lower.includes('200-500')) return [6];
   if (lower.includes('500-1000')) return [7];
   if (lower.includes('enterprise') || lower.includes('1000+')) return [8, 9, 10];
-  return []; // No size filter
-}
-
-function parseTitles(audience: string): string[] {
-  const titles: string[] = [];
-  const lower = audience.toLowerCase();
-
-  // Extract role keywords from audience description
-  const roleKeywords = [
-    'CEO', 'CTO', 'CFO', 'COO', 'CMO', 'VP', 'Director', 'Manager',
-    'Head of', 'Owner', 'Founder', 'Partner', 'President',
-    'Sales', 'Marketing', 'Engineering', 'Operations', 'Finance',
-    'Dealer', 'Principal', 'General Manager',
-  ];
-
-  for (const role of roleKeywords) {
-    if (lower.includes(role.toLowerCase())) {
-      titles.push(role);
-    }
-  }
-
-  // If no specific titles found, use common decision-maker titles
-  if (titles.length === 0) {
-    titles.push('Owner', 'CEO', 'Founder', 'General Manager', 'Director');
-  }
-
-  return titles;
+  return [];
 }
 
 export class ALeadsSource implements LeadSource {
@@ -59,37 +34,49 @@ export class ALeadsSource implements LeadSource {
     if (!this.isConfigured()) return [];
 
     try {
-      const titles = parseTitles(query.audience);
-      const companySizes = parseCompanySizes(query.audience);
+      const icp = query.icp_config;
+      const advancedFilters: Record<string, any> = {};
 
-      const advancedFilters: Record<string, any> = {
-        job_title: titles,
-      };
+      // Use ICP config titles if available, otherwise parse from audience
+      if (icp?.target_titles && icp.target_titles.length > 0) {
+        advancedFilters.job_title = icp.target_titles;
+      } else {
+        advancedFilters.job_title = ['Owner', 'CEO', 'Founder', 'General Manager', 'Director', 'VP Operations'];
+      }
 
-      // Add location if provided or parse from audience
-      if (query.location) {
+      // Use ICP config locations if available
+      if (icp?.locations && icp.locations.length > 0) {
+        advancedFilters.member_location_raw_address = icp.locations;
+      } else if (query.location) {
         advancedFilters.member_location_raw_address = [query.location];
       } else {
-        // Try to extract location from audience text
-        const locationMatch = query.audience.match(/\bin\s+([A-Z][a-zA-Z\s]+?)(?:\s+\d|\s*$)/);
-        if (locationMatch) {
-          advancedFilters.member_location_raw_address = [locationMatch[1].trim()];
+        // Try to extract "in <Location>" from audience
+        const match = query.audience.match(/\bin\s+(USA|United States|US|[A-Z][a-zA-Z\s]+?)(?:\s+with|\s*$)/i);
+        if (match) {
+          advancedFilters.member_location_raw_address = [match[1].trim()];
         }
       }
 
-      // Add company domain if company looks like a domain
-      if (query.company.includes('.')) {
-        advancedFilters.bulk_domains = query.company;
+      // Use ICP config industries if available
+      if (icp?.industries && icp.industries.length > 0) {
+        advancedFilters.company_industry = icp.industries;
+      } else if (query.industry) {
+        advancedFilters.company_industry = [query.industry];
       }
 
+      // Company size from ICP config or audience text
+      const sizeText = icp?.company_size || query.audience;
+      const companySizes = parseCompanySizes(sizeText);
       if (companySizes.length > 0) {
         advancedFilters.mapped_company_size = companySizes;
       }
 
-      // Add industry keywords if present
-      if (query.industry) {
-        advancedFilters.company_industry = [query.industry];
+      // Company domain if applicable
+      if (query.company.includes('.')) {
+        advancedFilters.bulk_domains = query.company;
       }
+
+      logger.info(`A-leads search filters: ${JSON.stringify(advancedFilters)}`);
 
       const res = await fetch(`${this.baseUrl}/search/advanced-search`, {
         method: 'POST',
@@ -106,7 +93,7 @@ export class ALeadsSource implements LeadSource {
 
       if (!res.ok) {
         const text = await res.text();
-        logger.error(`A-leads API error: ${res.status} ${text.slice(0, 200)}`);
+        logger.error(`A-leads API error: ${res.status} ${text.slice(0, 500)}`);
         return [];
       }
 
