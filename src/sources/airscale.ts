@@ -1,6 +1,9 @@
 import { LeadSource, Lead, LeadQuery } from './interface';
 import { logger } from '../logger';
 
+// Airscale is an enrichment API (reverse email/domain lookup), not a lead search engine.
+// findLeads returns [] — use enrichByEmail() to enrich leads from other sources.
+
 export class AirscaleSource implements LeadSource {
   name = 'airscale';
   private apiKey: string;
@@ -14,50 +17,29 @@ export class AirscaleSource implements LeadSource {
     return !!this.apiKey;
   }
 
-  async findLeads(query: LeadQuery): Promise<Lead[]> {
-    if (!this.isConfigured()) return [];
+  async findLeads(_query: LeadQuery): Promise<Lead[]> {
+    // Airscale doesn't support lead search — only enrichment
+    return [];
+  }
+
+  async enrichByEmail(email: string): Promise<Record<string, any> | null> {
+    if (!this.isConfigured()) return null;
 
     try {
-      const res = await fetch(`${this.baseUrl}/contacts/search`, {
+      const res = await fetch(`${this.baseUrl}/reverse-email`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          query: query.audience,
-          company: query.company,
-          location: query.location,
-          industry: query.industry,
-          per_page: query.limit || 50,
-        }),
+        body: JSON.stringify({ email }),
       });
 
-      if (!res.ok) {
-        logger.error(`Airscale API error: ${res.status} ${await res.text()}`);
-        return [];
-      }
-
-      const data = await res.json() as any;
-      const results = data.contacts || data.results || data.data || [];
-
-      return results.map((r: any) => ({
-        email: r.email || r.work_email,
-        first_name: r.first_name || r.firstName,
-        last_name: r.last_name || r.lastName,
-        company_name: r.company_name || r.company,
-        title: r.title || r.job_title,
-        phone: r.phone,
-        linkedin_url: r.linkedin_url || r.linkedin,
-        website: r.website,
-        industry: r.industry,
-        employee_count: r.employee_count || r.company_size,
-        location: r.location || r.country,
-        source: 'airscale',
-      }));
+      if (!res.ok) return null;
+      return await res.json() as Record<string, any>;
     } catch (err) {
-      logger.error('Airscale search failed', { error: err });
-      return [];
+      logger.error('Airscale enrichment failed', { error: err });
+      return null;
     }
   }
 }
