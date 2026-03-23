@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { initDb } from './db/client';
 import { runDailyTracking } from './tracking/daily-tracker';
 import campaignRoutes from './routes/campaigns';
+import { initSlackBot } from './slack/bot';
 import { logger } from './logger';
 
 const app = express();
@@ -46,6 +47,9 @@ async function start() {
       logger.error('Scheduled daily tracking failed', { error: err });
     }
   }, { timezone: 'Europe/Oslo' });
+
+  // Initialize Slack bot (slash commands)
+  initSlackBot(app);
 
   const port = process.env.PORT || 3000;
   app.listen(port, () => {

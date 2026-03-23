@@ -10,6 +10,8 @@ const envSchema = z.object({
   AIMFOX_API_KEY: z.string().optional(),
   INSTANTLY_API_KEY: z.string(),
   SLACK_WEBHOOK_URL: z.string().optional(),
+  SLACK_BOT_TOKEN: z.string().optional(),
+  SLACK_SIGNING_SECRET: z.string().optional(),
   MAKE_WEBHOOK_URL: z.string().optional(),
 });
 
